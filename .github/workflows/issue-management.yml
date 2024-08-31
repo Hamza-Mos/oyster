@@ -2,8 +2,8 @@ name: Issue Management (Test Version)
 
 on:
   schedule:
-    - cron: '* * * * *' # Run every minute
-  workflow_dispatch: # Allow manual trigger
+    - cron: '*/5 * * * *' # runs every 5 minutes
+  workflow_dispatch: # allows you to manually trigger the action
 
 jobs:
   manage-issues:
@@ -17,71 +17,5 @@ jobs:
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
-            const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-            const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000);
-            const botLogin = 'github-actions[bot]';
-
-            const issues = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open'
-            });
-
-            for (const issue of issues.data) {
-              const comments = await github.rest.issues.listComments({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number
-              });
-
-              const lastNonBotActivity = new Date(Math.max(
-                ...comments.data
-                  .filter(comment => comment.user.login !== botLogin)
-                  .map(comment => new Date(comment.created_at)),
-                new Date(issue.created_at)
-              ));
-
-              const isAssigned = issue.assignees.length > 0;
-              const warningAlreadyGiven = comments.data.some(comment =>
-                comment.user.login === botLogin &&
-                comment.body.includes('This issue has been inactive')
-              );
-
-              if (lastNonBotActivity < threeMinutesAgo) {
-                // Handle issues inactive for 3 minutes
-                if (isAssigned) {
-                  await github.rest.issues.removeAssignees({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: issue.number,
-                    assignees: issue.assignees.map(a => a.login)
-                  });
-
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: issue.number,
-                    body: 'This issue has been inactive for 3 minutes and has been unassigned. Feel free to pick it up again when you\'re ready to work on it.'
-                  });
-                } else if (!warningAlreadyGiven) {
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: issue.number,
-                    body: 'This unassigned issue has been inactive for 3 minutes. Please consider assigning it to someone or updating its status.'
-                  });
-                }
-              } else if (lastNonBotActivity < twoMinutesAgo && !warningAlreadyGiven) {
-                // Warning if inactive for 2 minutes
-                const warningMessage = isAssigned
-                  ? 'This issue has been inactive for 2 minutes. Please provide an update or it may be unassigned in 1 minute.'
-                  : 'This unassigned issue has been inactive for 2 minutes. Please consider assigning it to someone or updating its status.';
-
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issue.number,
-                  body: warningMessage
-                });
-              }
-            }
+            const script = require('./.github/scripts/manage-issues.js')
+            await script({github, context})
